@@ -36,9 +36,9 @@ converting them into events. The events will be dispatched into the messaging sy
 func init() {
 	rootCmd.AddCommand(handlerCmd)
 	handlerCmd.Flags().IntP("port", "p", 8080, "server port")
-	handlerCmd.Flags().String("amqp_conn", "amqp://guest:guest@firefly.dev:5672/", "amqp connection string")
+	handlerCmd.Flags().String("bus", "amqp://guest:guest@firefly.dev:5672/", "bus / amqp connection string")
 	viper.BindPFlag("port", handlerCmd.PersistentFlags().Lookup("port"))
-	viper.BindPFlag("amqp.url", handlerCmd.Flags().Lookup("amqp_conn"))
+	viper.BindPFlag("amqp.url", handlerCmd.Flags().Lookup("bus"))
 }
 
 func runHandler(cmd *cobra.Command, args []string) {

@@ -1,0 +1,8 @@
+---
+amqp:
+  url: amqp://guest:guest@localhost:5672/
+queue:
+  names:
+    alert: alerts
+    telemetry: telemetry
+    position: positions

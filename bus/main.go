@@ -15,7 +15,7 @@ type Dispatcher interface {
 }
 
 type Config struct {
-	URL string
+	URL string `json:"url"`
 }
 
 // TelemetryUpdatedEvent is an event containing telemetry updates received from a drone
