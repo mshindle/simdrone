@@ -26,11 +26,13 @@ func NewServer(config *Config) *negroni.Negroni {
 	positionProc := positionProcessor{config.PositionsQueueName, make(chan bus.PositionChangedEvent)}
 
 	// initialize our queue readers
-	err := initQueueReaders(config, alertProc, telemetryProc, posi)
+	err := initQueueReaders(config, alertProc, telemetryProc, positionProc)
 	if err != nil {
 		logrus.WithError(err).Error("no dispatcher available")
 	}
 
+	// initialize our data repository
+	repo :=
 	// configure simple http server
 	n := negroni.Classic()
 	router := mux.NewRouter()
