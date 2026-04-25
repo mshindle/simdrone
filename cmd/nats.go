@@ -22,7 +22,7 @@ var message string
 // natsCmd represents the nats command
 var natsCmd = &cobra.Command{
 	Use:   "nats",
-	Short: "Send a Pinged event to a NATS server",
+	Short: "Interact with NATS server",
 	Long:  ``,
 }
 
