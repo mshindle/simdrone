@@ -1,5 +1,8 @@
 .simdrone.yaml
 simdrone.exe
+simdrone
+**/.env
+*.log
 
 # Binaries for programs and plugins
 *.exe

@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # NATS: The nervous system (JetStream + KV)
+  nats:
+    image: nats:latest
+    container_name: nats
+    ports:
+      - "4222:4222" # Client port
+      - "8222:8222" # Monitoring port
+    command: "-js -m 8222" # Enable JetStream and Monitoring
+    networks:
+      - simnet
+  mongo:
+    image: mongo:7
+    container_name: simdrone-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: letmein
+      MONGO_INITDB_DATABASE: simdrone
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - simnet
+    restart: unless-stopped
+
+networks:
+  simnet:
+    driver: bridge
+
+volumes:
+  mongo_data  :

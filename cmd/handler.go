@@ -15,38 +15,70 @@
 package cmd
 
 import (
-	"strconv"
+	"context"
 
-	"github.com/mshindle/simdrone/bus"
-	"github.com/mshindle/simdrone/handler"
+	"github.com/ipfans/fxlogger"
+	"github.com/mshindle/simdrone/internal/bus"
+	"github.com/mshindle/simdrone/internal/bus/nats"
+	"github.com/mshindle/simdrone/internal/config"
+	"github.com/mshindle/simdrone/internal/handler"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"go.uber.org/fx"
+	"go.uber.org/fx/fxevent"
 )
+
+var useLocal bool
 
 // handlerCmd represents the handler command
 var handlerCmd = &cobra.Command{
 	Use:   "handler",
-	Short: "Command handler service for the drone army",
+	Short: "Service to handle and dispatch drone commands",
 	Long: `
-The command handler service is responsible for processing incoming commands and
-converting them into events. The events will be dispatched into the messaging system.`,
-	Run: runHandler,
+The command handler service is responsible for processing incoming commands, converting them into 
+an endpoint-agnostic event, and submitting them to the appropriate queue. Once submitted, the command
+handler washes its _hands_ of the request and moves on to the next task.
+
+This service acts as a gateway for the drone army, ensuring that commands are 
+properly formatted and queued before being handled by specialized workers.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fx.New(
+			fx.WithLogger(
+				func(logger zerolog.Logger) fxevent.Logger {
+					return fxlogger.WithZerolog(logger)()
+				}),
+			commonModule(cmd),
+			config.Module,
+			nats.Module,
+			configureDispatcher(),
+			handler.Module,
+			fx.Provide(
+				func(h *handler.Handler) WebServer { return h },
+				handler.AsOption(handler.WithLogger),
+			),
+			fx.Invoke(
+				func(lc fx.Lifecycle, ctx context.Context, w WebServer, l zerolog.Logger, cfg *config.Config) {
+					invokeWebServer(lc, ctx, w, l, cfg.Handler.Port)
+				},
+			),
+		).Run()
+	},
 }
 
 func init() {
 	rootCmd.AddCommand(handlerCmd)
 	handlerCmd.Flags().IntP("port", "p", 8080, "server port")
-	handlerCmd.Flags().String("bus", "amqp://guest:guest@firefly.dev:5672/", "bus / amqp connection string")
-	viper.BindPFlag("port", handlerCmd.PersistentFlags().Lookup("port"))
-	viper.BindPFlag("amqp.url", handlerCmd.Flags().Lookup("bus"))
+	handlerCmd.Flags().BoolVar(&useLocal, "local", false, "use local dispatcher")
+
+	_ = v.BindPFlag("handler.port", handlerCmd.Flags().Lookup("port"))
 }
 
-func runHandler(cmd *cobra.Command, args []string) {
-	config := &handler.Config{
-		DispatchConfig: bus.Config{
-			URL: viper.GetString("amqp.url"),
-		},
+func configureDispatcher() fx.Option {
+	var f any
+
+	f = func(m *nats.Messenger) bus.Dispatcher { return m }
+	if useLocal {
+		f = func() bus.Dispatcher { return bus.NewLocalDispatcher() }
 	}
-	server := handler.NewServer(config)
-	server.Run(":" + strconv.Itoa(viper.GetInt("port")))
+	return fx.Provide(f)
 }
