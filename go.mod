@@ -7,7 +7,7 @@ require (
 	github.com/ipfans/fxlogger v0.2.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v5 v5.1.0
-	github.com/mshindle/structures v0.0.0-20260425043251-628de9f03a0c
+	github.com/mshindle/structures v0.0.1
 	github.com/nats-io/nats.go v1.51.0
 	github.com/rabbitmq/amqp091-go v1.11.0
 	github.com/rs/xid v1.6.0
