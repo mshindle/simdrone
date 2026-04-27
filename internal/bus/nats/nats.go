@@ -9,10 +9,13 @@ import (
 
 	"github.com/mshindle/simdrone/internal/bus"
 	"github.com/mshindle/simdrone/internal/config"
+	"github.com/mshindle/simdrone/internal/telemetry"
 	"github.com/mshindle/simdrone/internal/web"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/xid"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.uber.org/fx"
 )
 
@@ -51,11 +54,16 @@ func (m *Messenger) Close() error {
 func (m *Messenger) Dispatch(ctx context.Context, routingKey string, message any) error {
 	var err error
 	var data []byte
+	asyncCtx := telemetry.DetachContext(ctx)
 
-	l := web.LoggerFromContext(ctx)
+	l := web.LoggerFromContext(asyncCtx)
 	hdr := nats.Header{}
 	hdr.Set(msgIDHeader, xid.New().String())
 	hdr.Set("source", "cmdHandler")
+
+	// 2. INJECT the OpenTelemetry Trace Context into the NATS headers.
+	// We cast nats.Header to http.Header since they share the same underlying map[string][]string type.
+	otel.GetTextMapPropagator().Inject(asyncCtx, propagation.HeaderCarrier(hdr))
 
 	switch message.(type) {
 	case []byte:
@@ -82,15 +90,20 @@ func (m *Messenger) Subscribe(ctx context.Context, topic string, handler bus.Mes
 	m.mu.Unlock()
 
 	ncs, err := m.conn.Subscribe(topic, func(msg *nats.Msg) {
-		m.l.Debug().Str("id", msg.Header.Get(msgIDHeader)).Str("subject", msg.Subject).Str("payload", string(msg.Data)).Msg("received message")
-		errh := handler(ctx, msg.Subject, msg.Data)
+		// EXTRACT the OpenTelemetry Context from the incoming NATS headers.
+		// We use the background context `ctx` passed to Subscribe as the root.
+		msgCtx := otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(msg.Header))
+		l := m.l.With().Str("msg_id", msg.Header.Get(msgIDHeader)).Str("subject", msg.Subject).Logger()
+		l.Debug().Msg("received message")
+
+		errh := handler(msgCtx, msg.Subject, msg.Data)
 		if errh != nil {
-			m.l.Error().Err(errh).Str("topic", msg.Subject).Msg("error handling event")
+			l.Error().Err(errh).Msg("error handling event")
 			// Negative Acknowledgment: Tell JetStream to redeliver the message later
 			_ = msg.Nak()
 			return
 		}
-		m.l.Debug().Str("subject", msg.Subject).Str("id", msg.Header.Get("NatsMsgID")).Msg("acknowledged message")
+		l.Debug().Msg("acknowledged message")
 		_ = msg.AckSync()
 	})
 	if err != nil {

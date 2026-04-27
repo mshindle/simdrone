@@ -2,11 +2,14 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 
+	"github.com/mshindle/simdrone/internal/config"
 	"github.com/mshindle/structures/ringbuffer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -52,13 +55,7 @@ func (trb *TracedRingBuffer[T]) Push(ctx context.Context, v T) error {
 	return err
 }
 
-func NewTracerProvider(ctx context.Context, serviceName ServiceName) (*sdktrace.TracerProvider, error) {
-	// Create an OTLP exporter (targets a collector or Jaeger)
-	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithInsecure())
-	if err != nil {
-		return nil, err
-	}
-
+func NewTracerProvider(ctx context.Context, exporter sdktrace.SpanExporter, serviceName ServiceName) (*sdktrace.TracerProvider, error) {
 	// Identify this service
 	res, err := resource.New(ctx,
 		resource.WithAttributes(semconv.ServiceNameKey.String(string(serviceName))),
@@ -77,13 +74,43 @@ func NewTracerProvider(ctx context.Context, serviceName ServiceName) (*sdktrace.
 
 var Module = fx.Module("telemetry",
 	fx.Provide(
-		NewTracerProvider,
+		func(ctx context.Context, cfg *config.Config) (sdktrace.SpanExporter, error) {
+			var exporter sdktrace.SpanExporter
+			var err error
+
+			switch cfg.Telemetry.Exporter {
+			case "xray":
+				// Placeholder for our next step!
+				return nil, errors.New("xray exporter not yet implemented")
+			case "jaeger":
+				fallthrough
+			default:
+				// Create the standard OTLP gRPC exporter
+				exporter, err = otlptracegrpc.New(ctx,
+					otlptracegrpc.WithInsecure(),
+					otlptracegrpc.WithEndpoint(cfg.Telemetry.Endpoint),
+				)
+			}
+			if err != nil {
+				return nil, err
+			}
+
+			return exporter, nil
+		},
+		func(cfg *config.Config) ServiceName { return ServiceName(cfg.Telemetry.Name) },
+		fx.Annotate(
+			NewTracerProvider,
+			fx.As(new(trace.TracerProvider)),
+			fx.As(fx.Self()),
+		),
 	),
 	fx.Invoke(
 		func(lc fx.Lifecycle, tp *sdktrace.TracerProvider) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					otel.SetTracerProvider(tp)
+					// Add this line to enable Header Injection/Extraction!
+					otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {

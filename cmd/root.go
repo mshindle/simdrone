@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/mshindle/simdrone/internal/telemetry"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -75,6 +74,9 @@ func initConfig() {
 	v.SetDefault("handler.port", 1313)
 	v.SetDefault("processor.port", 1314)
 	v.SetDefault("view.port", 1315)
+	v.SetDefault("telemetry.name", serviceName)
+	v.SetDefault("telemetry.exporter", "jaeger")
+	v.SetDefault("telemetry.endpoint", "localhost:4317")
 
 	// 2. Load any .env settings into the environment
 	if cfgFile != "" {
@@ -107,9 +109,6 @@ func commonModule(cmd *cobra.Command) fx.Option {
 				cmd.Context(),
 				fx.As(new(context.Context)),
 			),
-		),
-		fx.Provide(
-			func() telemetry.ServiceName { return serviceName },
 		),
 	)
 }

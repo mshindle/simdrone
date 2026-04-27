@@ -36,6 +36,12 @@ type View struct {
 	Port int `mapstructure:"port" validate:"omitempty,gte=80,lte=65535"`
 }
 
+type Telemetry struct {
+	Name     string `mapstructure:"name" validate:"required"`
+	Exporter string `mapstructure:"exporter" validate:"oneof=jaeger xray"`
+	Endpoint string `mapstructure:"endpoint" validate:"required"`
+}
+
 type Config struct {
 	Database  Database  `mapstructure:"database"`
 	Nats      Nats      `mapstructure:"nats"`
@@ -43,6 +49,7 @@ type Config struct {
 	Handler   Handler   `mapstructure:"handler"`
 	Processor Processor `mapstructure:"processor"`
 	View      View      `mapstructure:"view"`
+	Telemetry Telemetry `mapstructure:"telemetry"`
 }
 
 func (c Config) MarshalZerologObject(e *zerolog.Event) {
@@ -57,7 +64,9 @@ func (c Config) MarshalZerologObject(e *zerolog.Event) {
 		Dict("nats", e.CreateDict().Str("url", c.Nats.URL)).
 		Dict("handler", e.CreateDict().Int("port", c.Handler.Port)).
 		Dict("processor", e.CreateDict().Int("port", c.Processor.Port)).
-		Dict("view", e.CreateDict().Int("port", c.View.Port))
+		Dict("view", e.CreateDict().Int("port", c.View.Port)).
+		Dict("telemetry", e.CreateDict().Str("name", c.Telemetry.Name).
+			Str("exporter", c.Telemetry.Exporter).Str("endpoint", c.Telemetry.Endpoint))
 }
 
 func LoadConfig(v *viper.Viper) (*Config, error) {

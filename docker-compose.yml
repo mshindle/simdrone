@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   # NATS: The nervous system (JetStream + KV)
   nats:
     image: nats:latest
-    container_name: nats
+    container_name: simdrone-nats
     ports:
       - "4222:4222" # Client port
       - "8222:8222" # Monitoring port
@@ -22,6 +20,19 @@ services:
       MONGO_INITDB_DATABASE: simdrone
     volumes:
       - mongo_data:/data/db
+    networks:
+      - simnet
+    restart: unless-stopped
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: simdrone-jaeger
+    environment:
+      # This is critical: It enables the native OpenTelemetry receiver in Jaeger
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # The Jaeger UI (Web Browser)
+      - "4317:4317"   # OTLP gRPC receiver (Application traffic)
+      - "4318:4318"   # OTLP HTTP receiver
     networks:
       - simnet
     restart: unless-stopped
