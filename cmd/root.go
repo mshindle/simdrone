@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/mshindle/simdrone/internal/telemetry"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -16,6 +17,7 @@ import (
 const (
 	defaultLogLevel = zerolog.InfoLevel
 	version         = "v0.0.1"
+	serviceName     = "simdrone"
 )
 
 var cfgFile string
@@ -105,6 +107,9 @@ func commonModule(cmd *cobra.Command) fx.Option {
 				cmd.Context(),
 				fx.As(new(context.Context)),
 			),
+		),
+		fx.Provide(
+			func() telemetry.ServiceName { return serviceName },
 		),
 	)
 }

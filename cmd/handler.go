@@ -22,6 +22,7 @@ import (
 	"github.com/mshindle/simdrone/internal/bus/nats"
 	"github.com/mshindle/simdrone/internal/config"
 	"github.com/mshindle/simdrone/internal/handler"
+	"github.com/mshindle/simdrone/internal/telemetry"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
@@ -50,11 +51,13 @@ properly formatted and queued before being handled by specialized workers.`,
 			commonModule(cmd),
 			config.Module,
 			nats.Module,
-			configureDispatcher(),
 			handler.Module,
+			telemetry.Module,
+			configureDispatcher(),
 			fx.Provide(
 				func(h *handler.Handler) WebServer { return h },
 				handler.AsOption(handler.WithLogger),
+				handler.AsOption(handler.WithTraceProvider),
 			),
 			fx.Invoke(
 				func(lc fx.Lifecycle, ctx context.Context, w WebServer, l zerolog.Logger, cfg *config.Config) {

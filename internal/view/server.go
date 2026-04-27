@@ -4,17 +4,23 @@ import (
 	"context"
 	"time"
 
+	echotel "github.com/labstack/echo-opentelemetry"
 	"github.com/labstack/echo/v5"
 	"github.com/mshindle/simdrone/internal/event"
 	"github.com/mshindle/simdrone/internal/web"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/fx"
 )
+
+const serverName = "viewer"
 
 type Server struct {
 	e      *echo.Echo
 	logger zerolog.Logger
 	repo   EventRepository
+	tp     trace.TracerProvider
 }
 
 func New(opts ...Option) *Server {
@@ -22,6 +28,7 @@ func New(opts ...Option) *Server {
 		e:      echo.New(),
 		logger: zerolog.Nop(),
 		repo:   &mockEventRepository{},
+		tp:     noop.NewTracerProvider(),
 	}
 	for _, opt := range opts {
 		opt(srv)
@@ -35,7 +42,7 @@ func New(opts ...Option) *Server {
 }
 
 func (srv *Server) initRoutes() {
-	srv.e.Use(web.CommonMiddleware(srv.logger)...)
+	srv.e.Use(web.CommonMiddleware(srv.logger, echotel.Config{ServerName: serverName, TracerProvider: srv.tp})...)
 
 	dronesGroup := srv.e.Group("/drones")
 	dronesGroup.GET("", srv.activeHandler)

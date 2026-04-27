@@ -5,14 +5,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mshindle/structures"
+	"github.com/mshindle/structures/set"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func EnsureIndexes(ctx context.Context, e *EventRollupRepository) error {
-	collections := structures.NewSet[*mongo.Collection](3)
+	collections := set.New[*mongo.Collection](3)
 	collections.Add(e.alertsCollection)
 	collections.Add(e.telemetryCollection)
 	collections.Add(e.positionsCollection)

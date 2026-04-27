@@ -10,7 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/mshindle/structures"
+	"github.com/mshindle/structures/set"
 )
 
 type Empty struct{}
@@ -45,7 +45,7 @@ type drone struct {
 
 func createDrones(droneCount int) []*drone {
 	drones := make([]*drone, droneCount)
-	usedIDs := structures.NewSet[string](droneCount)
+	usedIDs := set.New[string](droneCount)
 
 	for i := range droneCount {
 		var id string

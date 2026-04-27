@@ -4,18 +4,23 @@ import (
 	"context"
 	"time"
 
+	"github.com/labstack/echo-opentelemetry"
 	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 	"github.com/mshindle/simdrone/internal/bus"
 	"github.com/mshindle/simdrone/internal/web"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/fx"
 )
+
+const serverName = "cmdHandler"
 
 type Handler struct {
 	e          *echo.Echo
 	dispatcher bus.Dispatcher
 	logger     zerolog.Logger
+	tp         trace.TracerProvider
 }
 
 func New(dispatcher bus.Dispatcher, opts ...Option) *Handler {
@@ -23,6 +28,7 @@ func New(dispatcher bus.Dispatcher, opts ...Option) *Handler {
 		dispatcher: dispatcher,
 		e:          echo.New(),
 		logger:     zerolog.Nop(),
+		tp:         noop.NewTracerProvider(),
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -37,30 +43,13 @@ func New(dispatcher bus.Dispatcher, opts ...Option) *Handler {
 
 func (h *Handler) initRoutes() {
 	h.e.Use(
-		middleware.RequestID(),
-		middleware.RequestLoggerWithConfig(
-			middleware.RequestLoggerConfig{
-				LogRequestID: true,
-				LogHost:      true,
-				LogURI:       true,
-				LogStatus:    true,
-				LogMethod:    true,
-				LogLatency:   true,
-				LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
-					h.logger.Info().
-						Int("status", v.Status).
-						Str("host", v.Host).
-						Str("method", v.Method).
-						Str("uri", v.URI).
-						Str("request_id", v.RequestID).
-						Dur("latency", v.Latency).
-						Msg("request")
-					return nil
-				},
+		web.CommonMiddleware(
+			h.logger,
+			echootel.Config{
+				ServerName:     serverName,
+				TracerProvider: h.tp,
 			},
-		),
-		web.AddContextLogger(h.logger, echo.HeaderXRequestID),
-		middleware.Recover(),
+		)...,
 	)
 
 	apiGroup := h.e.Group("/api")
@@ -84,6 +73,12 @@ type Option func(h *Handler)
 func WithLogger(logger zerolog.Logger) Option {
 	return func(h *Handler) {
 		h.logger = logger
+	}
+}
+
+func WithTraceProvider(tp trace.TracerProvider) Option {
+	return func(h *Handler) {
+		h.tp = tp
 	}
 }
 
