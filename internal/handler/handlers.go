@@ -7,13 +7,13 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/mshindle/simdrone/internal/event"
+	"github.com/mshindle/simdrone/internal/telemetry"
 	"github.com/mshindle/simdrone/internal/web"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
 
 const (
-	attrSubject           = "bus.subject"
 	attrDroneID           = "drone.id"
 	attrAlertFaultCode    = "alert.fault_code"
 	attrTelemetryBattery  = "telemetry.battery"
@@ -38,9 +38,9 @@ func bindCommand(c *echo.Context, cmd any) error {
 }
 
 func (h *Handler) dispatchCommand(ctx context.Context, subject string, evt any) error {
-	ctx, span := h.tp.Tracer(serverName).Start(ctx, "DispatchCommand")
+	ctx, span := h.tracer.Start(ctx, "DispatchCommand")
 	defer span.End()
-	span.SetAttributes(attribute.String(attrSubject, subject))
+	span.SetAttributes(attribute.String(telemetry.AttrSubject, subject))
 
 	l := web.LoggerFromContext(ctx)
 	err := h.dispatcher.Dispatch(ctx, subject, evt)
@@ -54,7 +54,7 @@ func (h *Handler) dispatchCommand(ctx context.Context, subject string, evt any) 
 }
 
 func (h *Handler) alertHandler(c *echo.Context) error {
-	ctx, span := h.tp.Tracer(serverName).Start(c.Request().Context(), "Handler.Alert")
+	ctx, span := h.tracer.Start(c.Request().Context(), "Handler.Alert")
 	defer span.End()
 
 	l := web.LoggerFromContext(ctx)
@@ -89,7 +89,7 @@ func (h *Handler) alertHandler(c *echo.Context) error {
 }
 
 func (h *Handler) telemetryHandler(c *echo.Context) error {
-	ctx, span := h.tp.Tracer(serverName).Start(c.Request().Context(), "Handler.Telemetry")
+	ctx, span := h.tracer.Start(c.Request().Context(), "Handler.Telemetry")
 	defer span.End()
 
 	cmd := new(telemetryCommand)
@@ -121,7 +121,7 @@ func (h *Handler) telemetryHandler(c *echo.Context) error {
 }
 
 func (h *Handler) positionHandler(c *echo.Context) error {
-	ctx, span := h.tp.Tracer(serverName).Start(c.Request().Context(), "Handler.Position")
+	ctx, span := h.tracer.Start(c.Request().Context(), "Handler.Position")
 	defer span.End()
 
 	cmd := new(positionCommand)

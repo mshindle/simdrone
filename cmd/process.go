@@ -11,11 +11,15 @@ import (
 	"github.com/mshindle/simdrone/internal/event"
 	"github.com/mshindle/simdrone/internal/evtproc"
 	"github.com/mshindle/simdrone/internal/repository/mongodb"
+	"github.com/mshindle/simdrone/internal/telemetry"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
+
+const procTracerName = "processor"
 
 // eventCmd represents the event processor command
 var eventCmd = &cobra.Command{
@@ -36,6 +40,10 @@ Plus it leaves a stub for us to work from later if we want to add more visibilit
 			commonModule(cmd),
 			config.Module,
 			nats.Module,
+			telemetry.Module,
+			fx.Provide(
+				func() telemetry.TracerName { return procTracerName },
+			),
 			evtproc.Module,
 			mongodb.Module,
 			fx.Provide(
@@ -59,17 +67,21 @@ func init() {
 	rootCmd.AddCommand(eventCmd)
 }
 
-func runProcessors(lc fx.Lifecycle, ctx context.Context, subscriber bus.Subscriber, r *mongodb.EventRollupRepository, l zerolog.Logger) {
+func runProcessors(lc fx.Lifecycle, ctx context.Context, tracer trace.Tracer, subscriber bus.Subscriber, r *mongodb.EventRollupRepository, l zerolog.Logger) {
 	ctxCancel, cancel := context.WithCancel(ctx)
 
 	lc.Append(fx.Hook{
 		OnStart: func(startCtx context.Context) error {
 			setups := []func() error{
-				func() error { return evtproc.DispatchEvent(ctxCancel, subscriber, event.AlertSignal, r.AddAlert) },
 				func() error {
-					return evtproc.DispatchEvent(ctxCancel, subscriber, event.TelemetryUpdate, r.AddTelemetry)
+					return evtproc.DispatchEvent(ctxCancel, tracer, subscriber, event.AlertSignal, r.AddAlert)
 				},
-				func() error { return evtproc.DispatchEvent(ctxCancel, subscriber, event.PositionUpdate, r.AddPosition) },
+				func() error {
+					return evtproc.DispatchEvent(ctxCancel, tracer, subscriber, event.TelemetryUpdate, r.AddTelemetry)
+				},
+				func() error {
+					return evtproc.DispatchEvent(ctxCancel, tracer, subscriber, event.PositionUpdate, r.AddPosition)
+				},
 			}
 			var errs error
 			for _, setup := range setups {

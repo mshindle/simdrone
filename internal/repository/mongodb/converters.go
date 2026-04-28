@@ -1,6 +1,8 @@
 package mongodb
 
 import (
+	"unicode"
+
 	"github.com/mshindle/simdrone/internal/event"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -68,4 +70,13 @@ func convertAlertRecordToEvent(record *mongoAlertRecord) *event.AlertSignalled {
 		FaultCode:   record.FaultCode,
 		ReceivedAt:  record.ReceivedAt,
 	}
+}
+
+func upperFirst(s string) string {
+	if s == "" {
+		return ""
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
 }

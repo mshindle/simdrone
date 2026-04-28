@@ -18,6 +18,12 @@ import (
 )
 
 type ServiceName string
+type TracerName string
+
+const (
+	AttrSubject  = "bus.subject"
+	AttrDBSystem = "db.system"
+)
 
 type TracedRingBuffer[T any] struct {
 	*ringbuffer.RingBuffer[T]
@@ -72,6 +78,11 @@ func NewTracerProvider(ctx context.Context, exporter sdktrace.SpanExporter, serv
 	return tp, nil
 }
 
+func NewTracer(tp trace.TracerProvider, tracerName TracerName) trace.Tracer {
+	return tp.Tracer(string(tracerName))
+}
+
+// Module provides telemetry functionality for the application. The caller of this module must provide the TracerName.
 var Module = fx.Module("telemetry",
 	fx.Provide(
 		func(ctx context.Context, cfg *config.Config) (sdktrace.SpanExporter, error) {
@@ -103,6 +114,7 @@ var Module = fx.Module("telemetry",
 			fx.As(new(trace.TracerProvider)),
 			fx.As(fx.Self()),
 		),
+		NewTracer,
 	),
 	fx.Invoke(
 		func(lc fx.Lifecycle, tp *sdktrace.TracerProvider) {

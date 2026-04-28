@@ -14,13 +14,12 @@ import (
 	"go.uber.org/fx"
 )
 
-const serverName = "cmdHandler"
-
 type Handler struct {
 	e          *echo.Echo
 	dispatcher bus.Dispatcher
 	logger     zerolog.Logger
 	tp         trace.TracerProvider
+	tracer     trace.Tracer
 }
 
 func New(dispatcher bus.Dispatcher, opts ...Option) *Handler {
@@ -46,7 +45,6 @@ func (h *Handler) initRoutes() {
 		web.CommonMiddleware(
 			h.logger,
 			echootel.Config{
-				ServerName:     serverName,
 				TracerProvider: h.tp,
 			},
 		)...,
@@ -79,6 +77,12 @@ func WithLogger(logger zerolog.Logger) Option {
 func WithTraceProvider(tp trace.TracerProvider) Option {
 	return func(h *Handler) {
 		h.tp = tp
+	}
+}
+
+func WithTracer(t trace.Tracer) Option {
+	return func(h *Handler) {
+		h.tracer = t
 	}
 }
 

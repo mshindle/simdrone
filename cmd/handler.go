@@ -29,6 +29,8 @@ import (
 	"go.uber.org/fx/fxevent"
 )
 
+const handlerTracerName = "cmdHandler"
+
 var useLocal bool
 
 // handlerCmd represents the handler command
@@ -55,9 +57,11 @@ properly formatted and queued before being handled by specialized workers.`,
 			telemetry.Module,
 			configureDispatcher(),
 			fx.Provide(
+				func() telemetry.TracerName { return handlerTracerName },
 				func(h *handler.Handler) WebServer { return h },
 				handler.AsOption(handler.WithLogger),
 				handler.AsOption(handler.WithTraceProvider),
+				handler.AsOption(handler.WithTracer),
 			),
 			fx.Invoke(
 				func(lc fx.Lifecycle, ctx context.Context, w WebServer, l zerolog.Logger, cfg *config.Config) {

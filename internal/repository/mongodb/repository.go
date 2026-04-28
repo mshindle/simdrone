@@ -3,14 +3,18 @@ package mongodb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/mshindle/simdrone/internal/config"
 	"github.com/mshindle/simdrone/internal/event"
 	"github.com/mshindle/simdrone/internal/repository"
+	"github.com/mshindle/simdrone/internal/telemetry"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
 
@@ -18,6 +22,8 @@ const (
 	positionsCollection = "positions"
 	telemetryCollection = "telemetry"
 	alertsCollection    = "alerts"
+
+	attrDBCollection = "db.collection"
 )
 
 type EventRollupRepository struct {
@@ -28,31 +34,46 @@ type EventRollupRepository struct {
 	positionsCollection *mongo.Collection
 	telemetryCollection *mongo.Collection
 	alertsCollection    *mongo.Collection
+	tracer              trace.Tracer
 }
 
-func New(dbname string, opts *options.ClientOptions) *EventRollupRepository {
-	return &EventRollupRepository{opts: opts, dbname: dbname}
+func New(dbname string, tracer trace.Tracer, opts *options.ClientOptions) *EventRollupRepository {
+	return &EventRollupRepository{opts: opts, dbname: dbname, tracer: tracer}
+}
+
+func insertOneCollection[T mongoRecord](ctx context.Context, tracer trace.Tracer, collection *mongo.Collection, record *T) error {
+	colName := collection.Name()
+	spanName := fmt.Sprintf("mongodb.Insert.%s", upperFirst(colName))
+	ctx, span := tracer.Start(ctx, spanName, trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+	span.SetAttributes(
+		attribute.String(telemetry.AttrDBSystem, "mongodb"),
+		attribute.String(attrDBCollection, colName),
+	)
+	_, err := collection.InsertOne(ctx, record)
+	if err != nil {
+		span.RecordError(err)
+	}
+	return err
 }
 
 // AddAlert inserts a new alert event into the alerts collection
 func (r *EventRollupRepository) AddAlert(ctx context.Context, evt *event.AlertSignalled) error {
 	record := convertAlertEventToRecord(evt, bson.NewObjectID())
-	_, err := r.alertsCollection.InsertOne(ctx, record)
-	return err
+	return insertOneCollection[mongoAlertRecord](ctx, r.tracer, r.alertsCollection, record)
 }
 
 // AddTelemetry inserts a new telemetry event into the telemetry collection
 func (r *EventRollupRepository) AddTelemetry(ctx context.Context, evt *event.TelemetryUpdated) error {
 	record := convertTelemetryEventToRecord(evt, bson.NewObjectID())
-	_, err := r.telemetryCollection.InsertOne(ctx, record)
-	return err
+	return insertOneCollection[mongoTelemetryRecord](ctx, r.tracer, r.telemetryCollection, record)
+
 }
 
 // AddPosition inserts a new position event into the positions collection
 func (r *EventRollupRepository) AddPosition(ctx context.Context, evt *event.PositionChanged) error {
 	record := convertPositionEventToRecord(evt, bson.NewObjectID())
-	_, err := r.positionsCollection.InsertOne(ctx, record)
-	return err
+	return insertOneCollection[mongoPositionRecord](ctx, r.tracer, r.positionsCollection, record)
 }
 
 func (r *EventRollupRepository) GetAlert(ctx context.Context, droneID string) (*event.AlertSignalled, error) {
@@ -157,9 +178,9 @@ func (r *EventRollupRepository) Close(ctx context.Context) error {
 
 var Module = fx.Module("repository",
 	fx.Provide(
-		func(cfg *config.Config) *EventRollupRepository {
+		func(cfg *config.Config, tracer trace.Tracer) *EventRollupRepository {
 			opts := options.Client().ApplyURI(cfg.Database.DSN)
-			return New(cfg.Database.Name, opts)
+			return New(cfg.Database.Name, tracer, opts)
 		}),
 	fx.Invoke(
 		func(lc fx.Lifecycle, r *EventRollupRepository) {

@@ -15,7 +15,9 @@ import (
 	"github.com/rs/xid"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
 
@@ -28,15 +30,17 @@ type Messenger struct {
 	js          nats.JetStreamContext
 	l           zerolog.Logger
 	subscribers map[string]*nats.Subscription
+	tracer      trace.Tracer
 	mu          sync.RWMutex
 }
 
-func NewMessenger(conn *nats.Conn, js nats.JetStreamContext, logger zerolog.Logger) *Messenger {
+func NewMessenger(conn *nats.Conn, js nats.JetStreamContext, logger zerolog.Logger, tracer trace.Tracer) *Messenger {
 	return &Messenger{
 		conn:        conn,
 		js:          js,
 		l:           logger,
 		subscribers: make(map[string]*nats.Subscription),
+		tracer:      tracer,
 	}
 }
 
@@ -96,8 +100,16 @@ func (m *Messenger) Subscribe(ctx context.Context, topic string, handler bus.Mes
 		l := m.l.With().Str("msg_id", msg.Header.Get(msgIDHeader)).Str("subject", msg.Subject).Logger()
 		l.Debug().Msg("received message")
 
+		// Start Consumer Span using the injected tracer!
+		msgCtx, span := m.tracer.Start(msgCtx, "NATS.Consume",
+			trace.WithSpanKind(trace.SpanKindConsumer),
+			trace.WithAttributes(attribute.String(telemetry.AttrSubject, msg.Subject)),
+		)
+		defer span.End()
+
 		errh := handler(msgCtx, msg.Subject, msg.Data)
 		if errh != nil {
+			span.RecordError(errh)
 			l.Error().Err(errh).Msg("error handling event")
 			// Negative Acknowledgment: Tell JetStream to redeliver the message later
 			_ = msg.Nak()
@@ -160,7 +172,7 @@ func (m *Messenger) Initialize() error {
 }
 
 var Module = fx.Module("nats",
-	fx.Provide(func(cfg *config.Config, logger zerolog.Logger) (*Messenger, error) {
+	fx.Provide(func(cfg *config.Config, logger zerolog.Logger, tracer trace.Tracer) (*Messenger, error) {
 		l := logger.With().Str("server", cfg.Nats.URL).Logger()
 		// Connect to NATS server
 		nc, err := nats.Connect(cfg.Nats.URL)
@@ -177,6 +189,6 @@ var Module = fx.Module("nats",
 			return nil, err
 		}
 		l.Info().Msg("connected to NATS JetStream")
-		return NewMessenger(nc, js, logger), nil
+		return NewMessenger(nc, js, logger, tracer), nil
 	}),
 )

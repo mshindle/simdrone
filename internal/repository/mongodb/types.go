@@ -33,3 +33,7 @@ type mongoPositionRecord struct {
 	HeadingCardinal int           `bson:"heading_cardinal" json:"heading_cardinal"`
 	ReceivedAt      time.Time     `bson:"received_at" json:"received_at"`
 }
+
+type mongoRecord interface {
+	mongoTelemetryRecord | mongoAlertRecord | mongoPositionRecord
+}
